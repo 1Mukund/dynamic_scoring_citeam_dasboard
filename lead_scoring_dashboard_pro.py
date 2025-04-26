@@ -55,6 +55,15 @@ if uploaded_file:
     X_pca = pca.fit_transform(X_scaled)
     checklist["PCA Feature Compression"] = True
 
+    # Scree Plot
+    st.subheader("PCA Variance Explained")
+    fig_scree, ax_scree = plt.subplots()
+    ax_scree.plot(np.cumsum(pca.explained_variance_ratio_), marker='o')
+    ax_scree.set_xlabel('Number of Components')
+    ax_scree.set_ylabel('Cumulative Explained Variance')
+    ax_scree.set_title('PCA Scree Plot')
+    st.pyplot(fig_scree)
+
     # Dynamic Scoring using PC1
     df['lead_score'] = X_pca[:, 0]
     df['score_percentile'] = pd.qcut(df['lead_score'], 100, labels=False)
@@ -75,8 +84,17 @@ if uploaded_file:
     checklist["Dynamic Clustering"] = True
 
     # Cluster Analysis & Labeling
-    cluster_summary = df.groupby('cluster').mean()
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    cluster_summary = df.groupby('cluster')[numeric_cols].mean()
     checklist["Cluster Analysis & Labeling"] = True
+
+    # Smart Cluster Naming
+    cluster_profiles = {}
+    for cluster_id in cluster_summary.index:
+        top_features = cluster_summary.loc[cluster_id].sort_values(ascending=False).head(2).index.tolist()
+        cluster_profiles[cluster_id] = f"High {top_features[0]} & {top_features[1]}"
+
+    df['cluster_profile'] = df['cluster'].map(cluster_profiles)
 
     # Dynamic Content Recommendation
     def recommend_content(cluster):
@@ -96,7 +114,8 @@ if uploaded_file:
 
     st.subheader("Cluster Count")
     fig2, ax2 = plt.subplots()
-    sns.countplot(x='cluster', data=df, ax=ax2)
+    sns.countplot(x='cluster_profile', data=df, order=df['cluster_profile'].value_counts().index, ax=ax2)
+    ax2.set_xticklabels(ax2.get_xticklabels(), rotation=45, ha='right')
     st.pyplot(fig2)
     checklist["Visualizations"] = True
 
@@ -106,7 +125,7 @@ if uploaded_file:
         df.to_excel(writer, index=False)
     buffer.seek(0)
 
-    st.download_button("Download Leads with Scores & Clusters", buffer, "scored_leads_with_clusters.xlsx")
+    st.download_button("Download Leads with Scores, Clusters & Profiles", buffer, "scored_leads_with_profiles.xlsx")
     checklist["Download Results"] = True
 
     # Display final checklist
