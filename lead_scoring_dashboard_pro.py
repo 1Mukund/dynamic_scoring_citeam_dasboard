@@ -40,8 +40,8 @@ if uploaded_file:
     df.fillna(0, inplace=True)
     checklist["Smart Auto-Cleaning"] = True
 
-    # Feature selection
-    feature_cols = [col for col in df.columns if col not in ['LeadId']]
+    # Feature selection: pick only numeric columns automatically
+    feature_cols = [col for col in df.columns if col not in ['LeadId'] and np.issubdtype(df[col].dtype, np.number)]
     X = df[feature_cols]
     checklist["Feature Extraction"] = True
 
@@ -64,13 +64,13 @@ if uploaded_file:
     best_k = 2
     best_score = -1
     for k in range(2, 8):
-        kmeans = KMeans(n_clusters=k, random_state=42)
+        kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
         cluster_labels = kmeans.fit_predict(X_pca)
         score = silhouette_score(X_pca, cluster_labels)
         if score > best_score:
             best_score = score
             best_k = k
-    kmeans = KMeans(n_clusters=best_k, random_state=42)
+    kmeans = KMeans(n_clusters=best_k, random_state=42, n_init=10)
     df['cluster'] = kmeans.fit_predict(X_pca)
     checklist["Dynamic Clustering"] = True
 
