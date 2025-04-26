@@ -9,17 +9,34 @@ import io
 st.set_page_config(page_title="Dynamic Lead Scoring", layout="wide")
 st.title("Dynamic Lead Scoring & Engagement System")
 
+# Initialize checklist states
+checklist = {
+    "Upload Engine": False,
+    "Auto-Clean Columns": False,
+    "Feature Extraction": False,
+    "Auto-Weight Learning": False,
+    "Dynamic Scoring Engine": False,
+    "Dynamic Bucketing": False,
+    "Transparent Scoring Math Display": False,
+    "Per-Lead Behavior Contribution": False,
+    "Dynamic Content Suggestion": False,
+    "Visualizations": False,
+    "Download Updated Excel": False,
+    "Download Scoring Logic Report": False
+}
+
 st.header("Checklist Progress")
 
-uploaded_file = st.file_uploader("Step 1: Upload your Excel file", type=["xlsx"])
+uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx"])
 
 if uploaded_file:
-    st.success("Step 1 Completed: File Uploaded")
-    
+    checklist["Upload Engine"] = True
+
     # Read and clean data
     df = pd.read_excel(uploaded_file)
     df.columns = df.columns.str.strip().str.replace(' ', '_').str.replace('-', '_')
     df.fillna(0, inplace=True)
+    checklist["Auto-Clean Columns"] = True
 
     feature_cols = [
         'CumulativeTime', 'Number_of_Page_Visited', 'Unqiue_Visits',
@@ -27,83 +44,82 @@ if uploaded_file:
         'daysSinceLastWebActivity', 'daysSinceLastInbound', 'daysSinceLastOutbound',
         'HighValuePageViews', 'DownloadedFilesCount'
     ]
+    checklist["Feature Extraction"] = True
 
-    # Step 2: Feature Scaling
+    # Feature Scaling
     scaler = MinMaxScaler()
     feature_data = scaler.fit_transform(df[feature_cols])
     feature_df = pd.DataFrame(feature_data, columns=feature_cols)
-    st.success("Step 2 Completed: Feature Scaling Done")
 
-    # Step 3: Feature Correlation Analysis
+    # Feature Correlation and Weight Calculation
     corrs = pd.DataFrame()
     corrs['feature'] = feature_cols
     corrs['correlation_to_inbound'] = [df[f].corr(df['WhatsappInbound']) for f in feature_cols]
     corrs['abs_corr'] = corrs['correlation_to_inbound'].abs()
-    st.success("Step 3 Completed: Correlation Analysis Done")
-
-    # Step 4: Dynamic Weight Calculation
     corrs['weight'] = corrs['abs_corr'] / corrs['abs_corr'].sum()
     weights = corrs.set_index('feature')['weight'].to_dict()
-    st.success("Step 4 Completed: Dynamic Weights Generated")
+    checklist["Auto-Weight Learning"] = True
 
-    # Step 5: Lead Scoring Computation
+    # Lead Scoring Computation
     df['lead_score'] = feature_df.dot(pd.Series(weights))
     df['score_percentile'] = df['lead_score'].rank(pct=True) * 100
-    st.success("Step 5 Completed: Lead Scoring Done")
+    checklist["Dynamic Scoring Engine"] = True
 
-    # Step 6: Lead Categorization
-    def bucketize(p):
-        if p >= 90:
-            return 'Hot'
-        elif p >= 75:
-            return 'Engaged'
-        elif p >= 50:
-            return 'Warm'
-        elif p >= 30:
-            return 'Curious'
-        elif p > 0:
-            return 'Cold'
-        else:
-            return 'Dormant'
-
-    df['lead_bucket'] = df['score_percentile'].apply(bucketize)
+    # Lead Categorization (Dynamic Bucketing)
+    num_buckets = 5
+    df['lead_bucket'] = pd.qcut(df['score_percentile'], q=num_buckets, labels=[f'Bucket_{i+1}' for i in range(num_buckets)])
+    checklist["Dynamic Bucketing"] = True
 
     def suggest_message(bucket):
         return {
-            'Hot': "You're close! Let's schedule your site visit.",
-            'Engaged': "Interested in pricing or EMI details?",
-            'Warm': "Here's a project walkthrough.",
-            'Curious': "See why our project stands out!",
-            'Cold': "Questions? We're here.",
-            'Dormant': "Special offers available!"
-        }.get(bucket, "")
+            'Bucket_5': "You're close! Let's schedule your site visit.",
+            'Bucket_4': "Interested in pricing or EMI details?",
+            'Bucket_3': "Here's a project walkthrough.",
+            'Bucket_2': "See why our project stands out!",
+            'Bucket_1': "Questions? We're here."
+        }.get(bucket, "Special offers available!")
 
     df['recommended_message'] = df['lead_bucket'].apply(suggest_message)
-    st.success("Step 6 Completed: Leads Categorized")
+    checklist["Dynamic Content Suggestion"] = True
 
-    # Step 7: Scoring Transparency Display
+    # Scoring Transparency Display
     st.subheader("Scoring Logic Transparency")
     st.dataframe(corrs)
+    checklist["Transparent Scoring Math Display"] = True
 
+    # Leads Table
     st.subheader("Leads Scored")
     st.dataframe(df[['LeadId', 'lead_score', 'lead_bucket', 'recommended_message']])
 
+    # Per-Lead Contribution Table
     st.subheader("Per-Lead Feature Contributions")
     contributions_df = feature_df.copy()
     for col in feature_cols:
         contributions_df[col] = contributions_df[col] * weights[col]
     contributions_df['LeadId'] = df['LeadId']
     st.dataframe(contributions_df.set_index('LeadId'))
+    checklist["Per-Lead Behavior Contribution"] = True
 
-    st.success("Step 7 Completed: Transparency Tables Shown")
+    # Visualizations
+    st.subheader("Score Distribution")
+    fig, ax = plt.subplots()
+    sns.histplot(df['lead_score'], bins=20, ax=ax)
+    st.pyplot(fig)
 
-    # Step 8: Export Results
+    st.subheader("Bucket Distribution")
+    fig2, ax2 = plt.subplots()
+    sns.countplot(x='lead_bucket', data=df, order=[f'Bucket_{i+1}' for i in range(num_buckets)], ax=ax2)
+    st.pyplot(fig2)
+    checklist["Visualizations"] = True
+
+    # Export Results
     buffer_leads = io.BytesIO()
     with pd.ExcelWriter(buffer_leads, engine='openpyxl') as writer:
         df.to_excel(writer, index=False)
     buffer_leads.seek(0)
 
     st.download_button("Download Leads with Scores", buffer_leads, "scored_leads.xlsx")
+    checklist["Download Updated Excel"] = True
 
     buffer_logic = io.BytesIO()
     with pd.ExcelWriter(buffer_logic, engine='openpyxl') as writer:
@@ -111,8 +127,12 @@ if uploaded_file:
     buffer_logic.seek(0)
 
     st.download_button("Download Scoring Logic Report", buffer_logic, "scoring_logic.xlsx")
+    checklist["Download Scoring Logic Report"] = True
 
-    st.success("Step 8 Completed: Files Ready for Download")
+    # Display final checklist
+    st.header("✅ Final Progress Tracker")
+    for task, status in checklist.items():
+        st.write(f"{'✅' if status else '❌'} {task}")
 
 else:
     st.info("Please upload an Excel file to proceed with Dynamic Lead Scoring.")
