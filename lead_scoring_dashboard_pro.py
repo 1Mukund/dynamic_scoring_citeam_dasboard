@@ -9,14 +9,14 @@ import io
 st.set_page_config(page_title="Dynamic Lead Scoring", layout="wide")
 st.title("Dynamic Lead Scoring & Engagement System")
 
-# --- Optional Settings Panel ---
-st.sidebar.header("Settings")
-adjust_scaling = st.sidebar.checkbox("Adjust Feature Scaling", value=False)
-adjust_weighting = st.sidebar.checkbox("Adjust Feature Weights", value=False)
+st.header("Checklist Progress")
 
-uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx"])
+uploaded_file = st.file_uploader("Step 1: Upload your Excel file", type=["xlsx"])
 
 if uploaded_file:
+    st.success("Step 1 Completed: File Uploaded")
+    
+    # Read and clean data
     df = pd.read_excel(uploaded_file)
     df.columns = df.columns.str.strip().str.replace(' ', '_').str.replace('-', '_')
     df.fillna(0, inplace=True)
@@ -28,34 +28,30 @@ if uploaded_file:
         'HighValuePageViews', 'DownloadedFilesCount'
     ]
 
-    # Feature scaling
+    # Step 2: Feature Scaling
     scaler = MinMaxScaler()
     feature_data = scaler.fit_transform(df[feature_cols])
     feature_df = pd.DataFrame(feature_data, columns=feature_cols)
+    st.success("Step 2 Completed: Feature Scaling Done")
 
-    # Feature correlation and weight calculation
+    # Step 3: Feature Correlation Analysis
     corrs = pd.DataFrame()
     corrs['feature'] = feature_cols
     corrs['correlation_to_inbound'] = [df[f].corr(df['WhatsappInbound']) for f in feature_cols]
     corrs['abs_corr'] = corrs['correlation_to_inbound'].abs()
+    st.success("Step 3 Completed: Correlation Analysis Done")
+
+    # Step 4: Dynamic Weight Calculation
     corrs['weight'] = corrs['abs_corr'] / corrs['abs_corr'].sum()
-
-    if adjust_weighting:
-        st.sidebar.subheader("Adjust Feature Weights")
-        for feature in feature_cols:
-            user_weight = st.sidebar.slider(f"{feature}", 0.0, 1.0, float(corrs.loc[corrs['feature'] == feature, 'weight']))
-            corrs.loc[corrs['feature'] == feature, 'weight'] = user_weight
-        corrs['weight'] /= corrs['weight'].sum()
-
     weights = corrs.set_index('feature')['weight'].to_dict()
+    st.success("Step 4 Completed: Dynamic Weights Generated")
 
-    # Transparent Display of Scoring Logic
-    st.subheader("Scoring Logic Transparency")
-    st.dataframe(corrs)
-
+    # Step 5: Lead Scoring Computation
     df['lead_score'] = feature_df.dot(pd.Series(weights))
     df['score_percentile'] = df['lead_score'].rank(pct=True) * 100
+    st.success("Step 5 Completed: Lead Scoring Done")
 
+    # Step 6: Lead Categorization
     def bucketize(p):
         if p >= 90:
             return 'Hot'
@@ -83,12 +79,15 @@ if uploaded_file:
         }.get(bucket, "")
 
     df['recommended_message'] = df['lead_bucket'].apply(suggest_message)
+    st.success("Step 6 Completed: Leads Categorized")
 
-    # --- Leads Table ---
+    # Step 7: Scoring Transparency Display
+    st.subheader("Scoring Logic Transparency")
+    st.dataframe(corrs)
+
     st.subheader("Leads Scored")
     st.dataframe(df[['LeadId', 'lead_score', 'lead_bucket', 'recommended_message']])
 
-    # --- Per-Lead Contribution Table ---
     st.subheader("Per-Lead Feature Contributions")
     contributions_df = feature_df.copy()
     for col in feature_cols:
@@ -96,16 +95,9 @@ if uploaded_file:
     contributions_df['LeadId'] = df['LeadId']
     st.dataframe(contributions_df.set_index('LeadId'))
 
-    # --- Visualizations ---
-    fig, ax = plt.subplots()
-    sns.histplot(df['lead_score'], bins=20, ax=ax)
-    st.pyplot(fig)
+    st.success("Step 7 Completed: Transparency Tables Shown")
 
-    fig2, ax2 = plt.subplots()
-    sns.countplot(x='lead_bucket', data=df, order=['Hot', 'Engaged', 'Warm', 'Curious', 'Cold', 'Dormant'], ax=ax2)
-    st.pyplot(fig2)
-
-    # --- Downloads ---
+    # Step 8: Export Results
     buffer_leads = io.BytesIO()
     with pd.ExcelWriter(buffer_leads, engine='openpyxl') as writer:
         df.to_excel(writer, index=False)
@@ -120,8 +112,7 @@ if uploaded_file:
 
     st.download_button("Download Scoring Logic Report", buffer_logic, "scoring_logic.xlsx")
 
-    # --- Final Triple-Check Summary ---
-    st.success("Triple-Checked: Feature Scaling, Weight Adjustment, and Output Generation Completed Successfully!")
+    st.success("Step 8 Completed: Files Ready for Download")
 
 else:
-    st.info("Upload an Excel file to get started.")
+    st.info("Please upload an Excel file to proceed with Dynamic Lead Scoring.")
