@@ -12,6 +12,12 @@ from sklearn.metrics import silhouette_score
 st.set_page_config(page_title="Advanced Dynamic Lead Scoring", layout="wide")
 st.title("Advanced Dynamic Lead Scoring & Engagement System")
 
+# Sidebar controls
+st.sidebar.header("Settings")
+lead_selection = st.sidebar.selectbox("Lead Selection Strategy", ["Top 5 per Cluster", "Top 10% Overall"])
+content_strategy = st.sidebar.selectbox("Content Sensitivity", ["Aggressive", "Nurture"])
+download_option = st.sidebar.selectbox("Download File Type", ["Full Export", "Top Leads Export"])
+
 # Initialize checklist states
 checklist = {
     "Upload Engine": False,
@@ -41,9 +47,16 @@ if uploaded_file:
     df.fillna(0, inplace=True)
     checklist["Smart Auto-Cleaning"] = True
 
-    # Feature selection: pick only numeric columns automatically
-    feature_cols = [col for col in df.columns if col not in ['LeadId'] and np.issubdtype(df[col].dtype, np.number)]
-    X = df[feature_cols]
+    # Correct Feature Selection based on meaningful behavioral features
+    selected_features = [
+        'CumulativeTime', 'Number_of_Page_Visited', 'Unqiue_Visits',
+        'WhatsappInbound', 'WhatsappOutbound',
+        'daysSinceLastWebActivity', 'daysSinceLastInbound', 'daysSinceLastOutbound',
+        'HighValuePageViews', 'DownloadedFilesCount'
+    ]
+
+    available_features = [col for col in selected_features if col in df.columns]
+    X = df[available_features]
     checklist["Feature Extraction"] = True
 
     # Feature Standardization
@@ -55,6 +68,19 @@ if uploaded_file:
     pca = PCA(n_components=0.95)
     X_pca = pca.fit_transform(X_scaled)
     checklist["PCA Feature Compression"] = True
+
+    # Show Scoring Logic (Feature Contributions)
+    st.subheader("Scoring Logic Transparency")
+    feature_importance = pd.Series(pca.components_[0], index=available_features)
+    feature_importance = feature_importance.abs().sort_values(ascending=False)
+    st.markdown("**Lead Score = Weighted combination of below features:**")
+    st.dataframe(feature_importance.reset_index().rename(columns={0: 'Contribution', 'index': 'Feature'}))
+
+    fig_logic, ax_logic = plt.subplots()
+    feature_importance.plot(kind='bar', ax=ax_logic)
+    ax_logic.set_ylabel('Absolute Contribution Weight')
+    ax_logic.set_title('Feature Contributions to Lead Score (PC1)')
+    st.pyplot(fig_logic)
 
     # Scree Plot
     st.subheader("PCA Variance Explained")
@@ -79,7 +105,7 @@ if uploaded_file:
         cluster_labels = kmeans.fit_predict(X_pca)
         silhouette_scores.append(silhouette_score(X_pca, cluster_labels))
     best_k = K_range[np.argmax(silhouette_scores)]
-    
+
     fig_k, ax_k = plt.subplots()
     ax_k.plot(K_range, silhouette_scores, marker='o')
     ax_k.set_xlabel('Number of Clusters K')
@@ -107,15 +133,16 @@ if uploaded_file:
 
     # Dynamic Content Recommendation
     def dynamic_message(row):
-        if row['lead_score'] > df['lead_score'].mean():
-            if 'Time' in row['cluster_profile'] or 'Page' in row['cluster_profile']:
-                return "Invite for a webinar or live demo."
-            elif 'Whatsapp' in row['cluster_profile']:
-                return "Engage via WhatsApp personalized offers."
+        if content_strategy == "Aggressive":
+            if row['lead_score'] > df['lead_score'].mean():
+                return "Act now! Schedule a personalized demo."
             else:
-                return "Send premium case studies and 1:1 offers."
+                return "Limited time offer: Learn more today."
         else:
-            return "Send nurturing emails and educational content."
+            if row['lead_score'] > df['lead_score'].mean():
+                return "We'd love to show you more when you're ready."
+            else:
+                return "Explore helpful resources at your own pace."
 
     df['content_recommendation'] = df.apply(dynamic_message, axis=1)
     checklist["Dynamic Content Recommendation"] = True
@@ -141,13 +168,37 @@ if uploaded_file:
     st.markdown(f"**Average Lead Score:** {df['lead_score'].mean():.2f}")
     checklist["Executive Summary"] = True
 
+    # Cluster Mini Summary Cards
+    st.header("Cluster Profiles Summary")
+    for cluster_id, profile in cluster_profiles.items():
+        cluster_data = df[df['cluster'] == cluster_id]
+        avg_score = cluster_data['lead_score'].mean()
+        st.subheader(f"Cluster {cluster_id}: {profile}")
+        st.markdown(f"- **Number of Leads:** {len(cluster_data)}")
+        st.markdown(f"- **Average Lead Score:** {avg_score:.2f}")
+        st.markdown(f"- **Top Features:** {profile}")
+        if content_strategy == "Aggressive":
+            st.markdown(f"- **Recommended Action:** Prioritize aggressive outreach and demos.")
+        else:
+            st.markdown(f"- **Recommended Action:** Nurture through educational and value-driven content.")
+
+    # Lead Selection Logic
+    if lead_selection == "Top 5 per Cluster":
+        top_leads = df.groupby('cluster').apply(lambda x: x.nlargest(5, 'lead_score')).reset_index(drop=True)
+    else:
+        threshold = np.percentile(df['lead_score'], 90)
+        top_leads = df[df['lead_score'] >= threshold]
+
     # Download Results
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False)
+        if download_option == "Top Leads Export":
+            top_leads.to_excel(writer, index=False)
+        else:
+            df.to_excel(writer, index=False)
     buffer.seek(0)
 
-    st.download_button("Download Leads with Dynamic Scores, Clusters & Messages", buffer, "dynamic_lead_scoring_results.xlsx")
+    st.download_button("Download Selected Leads", buffer, "dynamic_lead_scoring_results.xlsx")
     checklist["Download Results"] = True
 
     # Display final checklist
