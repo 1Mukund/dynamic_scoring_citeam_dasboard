@@ -24,7 +24,8 @@ checklist = {
     "Cluster Analysis & Labeling": False,
     "Dynamic Content Recommendation": False,
     "Visualizations": False,
-    "Download Results": False
+    "Download Results": False,
+    "Executive Summary": False
 }
 
 st.header("Checklist Progress")
@@ -69,16 +70,24 @@ if uploaded_file:
     df['score_percentile'] = pd.qcut(df['lead_score'], 100, labels=False)
     checklist["Dynamic Scoring Engine"] = True
 
-    # Dynamic Clustering (Auto K detection)
-    best_k = 2
-    best_score = -1
-    for k in range(2, 8):
+    # Dynamic Clustering (Auto K detection with visualization)
+    st.subheader("Optimal Cluster (K) Selection")
+    silhouette_scores = []
+    K_range = range(2, 8)
+    for k in K_range:
         kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
         cluster_labels = kmeans.fit_predict(X_pca)
-        score = silhouette_score(X_pca, cluster_labels)
-        if score > best_score:
-            best_score = score
-            best_k = k
+        silhouette_scores.append(silhouette_score(X_pca, cluster_labels))
+    best_k = K_range[np.argmax(silhouette_scores)]
+    
+    fig_k, ax_k = plt.subplots()
+    ax_k.plot(K_range, silhouette_scores, marker='o')
+    ax_k.set_xlabel('Number of Clusters K')
+    ax_k.set_ylabel('Silhouette Score')
+    ax_k.set_title('Optimal K using Silhouette Score')
+    st.pyplot(fig_k)
+
+    # Final Clustering
     kmeans = KMeans(n_clusters=best_k, random_state=42, n_init=10)
     df['cluster'] = kmeans.fit_predict(X_pca)
     checklist["Dynamic Clustering"] = True
@@ -97,13 +106,18 @@ if uploaded_file:
     df['cluster_profile'] = df['cluster'].map(cluster_profiles)
 
     # Dynamic Content Recommendation
-    def recommend_content(cluster):
-        if cluster_summary.loc[cluster, 'lead_score'] > df['lead_score'].mean():
-            return "Send demo invitation"
+    def dynamic_message(row):
+        if row['lead_score'] > df['lead_score'].mean():
+            if 'Time' in row['cluster_profile'] or 'Page' in row['cluster_profile']:
+                return "Invite for a webinar or live demo."
+            elif 'Whatsapp' in row['cluster_profile']:
+                return "Engage via WhatsApp personalized offers."
+            else:
+                return "Send premium case studies and 1:1 offers."
         else:
-            return "Send case study or nurture content"
+            return "Send nurturing emails and educational content."
 
-    df['content_recommendation'] = df['cluster'].apply(recommend_content)
+    df['content_recommendation'] = df.apply(dynamic_message, axis=1)
     checklist["Dynamic Content Recommendation"] = True
 
     # Visualizations
@@ -119,13 +133,21 @@ if uploaded_file:
     st.pyplot(fig2)
     checklist["Visualizations"] = True
 
+    # Executive Summary
+    st.header("Executive Summary")
+    st.markdown(f"**Total Leads Processed:** {len(df)}")
+    st.markdown(f"**Optimal Clusters Found:** {best_k}")
+    st.markdown(f"**PCA Components Used:** {X_pca.shape[1]}")
+    st.markdown(f"**Average Lead Score:** {df['lead_score'].mean():.2f}")
+    checklist["Executive Summary"] = True
+
     # Download Results
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
         df.to_excel(writer, index=False)
     buffer.seek(0)
 
-    st.download_button("Download Leads with Scores, Clusters & Profiles", buffer, "scored_leads_with_profiles.xlsx")
+    st.download_button("Download Leads with Dynamic Scores, Clusters & Messages", buffer, "dynamic_lead_scoring_results.xlsx")
     checklist["Download Results"] = True
 
     # Display final checklist
