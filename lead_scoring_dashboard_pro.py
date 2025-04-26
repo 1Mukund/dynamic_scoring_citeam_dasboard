@@ -119,7 +119,7 @@ if uploaded_file:
     checklist["Dynamic Clustering"] = True
 
     # Cluster Analysis & Labeling
-    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    numeric_cols = [col for col in df.select_dtypes(include=[np.number]).columns if col != 'LeadId']
     cluster_summary = df.groupby('cluster')[numeric_cols].mean()
     checklist["Cluster Analysis & Labeling"] = True
 
