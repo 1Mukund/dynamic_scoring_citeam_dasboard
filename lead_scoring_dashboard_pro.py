@@ -1,142 +1,206 @@
-# Step 1: Importing Libraries
+# Step 1: Importing Libraries and Explaining Why
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# Step 2: Streamlit Page Setup
+# Step 1 Complete!
+
+# --------------------------------------------------
+
+# Step 2: Setting Streamlit Page Configuration
+
 st.set_page_config(page_title="Intelligent Lead Scoring Dashboard", layout="wide")
+
 st.title("📊 Intelligent Lead Scoring & Opportunity Detection Dashboard")
 
-# Step 3: Uploading Data
-uploaded_file = st.file_uploader("Upload Lead Excel File", type=["xlsx"])
+# Step 2 Complete!
 
-if uploaded_file:
-    # Step 4: Read Data
+# --------------------------------------------------
+
+# Step 3: Creating File Upload UI
+
+uploaded_file = st.file_uploader("📂 Upload your Lead Excel File", type=["xlsx"])
+
+if uploaded_file is not None:
+    st.success("✅ File uploaded successfully! Now processing...")
+
+    # Step 4: Data Cleaning and Feature Preprocessing
+
     df = pd.read_excel(uploaded_file)
-    st.success("File uploaded successfully!")
 
-    # Step 5: Basic Cleaning
-    df.columns = df.columns.str.strip().str.replace(" ", "_")
-    df['daysSinceLastInbound'] = df.get('daysSinceLastInbound', pd.Series(999, index=df.index)).fillna(999)
-    df['daysSinceLastOutbound'] = df.get('daysSinceLastOutbound', pd.Series(999, index=df.index)).fillna(999)
+    df.columns = df.columns.str.strip().str.replace(' ', '_').str.replace('-', '_').str.lower()
 
-    # Step 6: Intelligent Recency Calculations
-    if 'LastVisitTimestamp' in df.columns:
-        today = pd.Timestamp.now()
-        df['LastVisitTimestamp'] = pd.to_datetime(df['LastVisitTimestamp'], errors='coerce')
-        df['daysSinceLastWebActivity'] = (today - df['LastVisitTimestamp']).dt.days.fillna(999)
+    days_since_cols = ['dayssincelastwebactivity', 'dayssincelastinbound', 'dayssincelastoutbound']
+    for col in days_since_cols:
+        if col in df.columns:
+            df[col] = df[col].fillna(999)
 
-    if 'Inbound_Message_time' in df.columns:
-        df['Inbound_Message_time'] = pd.to_datetime(df['Inbound_Message_time'], errors='coerce')
-        df['daysSinceLastInbound'] = (today - df['Inbound_Message_time']).dt.days.fillna(999)
+    if 'lastvisittimestamp' in df.columns:
+        df['lastvisittimestamp'] = pd.to_datetime(df['lastvisittimestamp'], errors='coerce')
+        today = pd.Timestamp.today()
+        df['dayssincelastwebactivity'] = (today - df['lastvisittimestamp']).dt.days.fillna(999)
 
-    if 'Outbound_Message_time' in df.columns:
-        df['Outbound_Message_time'] = pd.to_datetime(df['Outbound_Message_time'], errors='coerce')
-        df['daysSinceLastOutbound'] = (today - df['Outbound_Message_time']).dt.days.fillna(999)
+    if 'inbound_message_time' in df.columns:
+        df['inbound_message_time'] = pd.to_datetime(df['inbound_message_time'], errors='coerce')
+        df['dayssincelastinbound'] = (today - df['inbound_message_time']).dt.days.fillna(999)
 
-    # Step 7: Feature Engineering
-    behavior_features = ['CumulativeTime', 'Number_of_Page_Visited', 'Unqiue_Visits',
-                          'HighValuePageViews', 'DownloadedFilesCount',
-                          'WhatsappInbound', 'WhatsappOutbound',
-                          'daysSinceLastWebActivity', 'daysSinceLastInbound']
+    if 'outbound_message_time' in df.columns:
+        df['outbound_message_time'] = pd.to_datetime(df['outbound_message_time'], errors='coerce')
+        df['dayssincelastoutbound'] = (today - df['outbound_message_time']).dt.days.fillna(999)
 
-    available_features = [feat for feat in behavior_features if feat in df.columns]
+    st.success("✅ Data cleaning and feature preprocessing completed!")
 
-    # Step 8: Dynamic Correlation Analysis
-    correlation_matrix = df[available_features].corr()
-    engagement_features = ['CumulativeTime', 'Number_of_Page_Visited', 'Unqiue_Visits', 'HighValuePageViews']
-    intent_features = ['DownloadedFilesCount', 'WhatsappInbound']
-    recency_features = ['daysSinceLastWebActivity', 'daysSinceLastInbound']
+    # --------------------------------------------------
 
-    # Step 9: Scoring Calculation
-    def calculate_score(row):
+    # Step 5: Defining Behavior Grouping
+
+    st.subheader("🧠 Step 5: Behavior Feature Grouping")
+
+    web_engagement_features = ['cumulativetime', 'number_of_page_visited', 'unqiue_visits', 'highvaluepageviews']
+    intent_action_features = ['downloadedfilescount', 'whatsappinbound']
+    communication_features = ['whatsappoutbound']
+    recency_features = ['dayssincelastwebactivity', 'dayssincelastinbound']
+
+    st.markdown("**Feature Groups:**")
+    st.markdown("- **Web Engagement**: " + ", ".join(web_engagement_features))
+    st.markdown("- **Intent Actions**: " + ", ".join(intent_action_features))
+    st.markdown("- **Communication**: " + ", ".join(communication_features))
+    st.markdown("- **Recency**: " + ", ".join(recency_features))
+
+    st.success("✅ Behavior features grouped successfully!")
+
+    # --------------------------------------------------
+
+    # Step 6: Performing Correlation Analysis
+
+    st.subheader("🔎 Step 6: Feature Correlation Analysis")
+
+    feature_corr = df[web_engagement_features + intent_action_features + communication_features + recency_features].corr()
+
+    st.write("✅ Correlation Matrix:")
+    st.dataframe(feature_corr)
+
+    focus_features = intent_action_features
+
+    importance_scores = {}
+    for feature in web_engagement_features + communication_features + recency_features:
         score = 0
+        for intent_feat in focus_features:
+            score += abs(feature_corr.get(feature, {}).get(intent_feat, 0))
+        importance_scores[feature] = score / len(focus_features)
 
-        # Engagement Score
-        if all(feat in row for feat in engagement_features):
-            page_per_visit = row['Number_of_Page_Visited'] / (row['Unqiue_Visits'] + 1e-5)
-            if page_per_visit > 3:
-                score += 10
-            if row['CumulativeTime'] > df['CumulativeTime'].median():
-                score += 10
-            if row['HighValuePageViews'] > df['HighValuePageViews'].median():
-                score += 15
+    importance_df = pd.DataFrame.from_dict(importance_scores, orient='index', columns=['importance_score']).sort_values(by='importance_score', ascending=False)
 
-        # Intent Score
-        if all(feat in row for feat in intent_features):
-            score += row['DownloadedFilesCount'] * 15
-            score += row['WhatsappInbound'] * 20
+    st.markdown("### 📋 Calculated Importance of Each Feature:")
+    st.dataframe(importance_df)
 
-        # Recency Score
-        if 'daysSinceLastWebActivity' in row:
-            if row['daysSinceLastWebActivity'] < df['daysSinceLastWebActivity'].median():
-                score += 10
-        if 'daysSinceLastInbound' in row:
-            if row['daysSinceLastInbound'] < df['daysSinceLastInbound'].median():
-                score += 10
+    st.success("✅ Correlation Analysis Completed!")
 
-        # Communication Adjustment
-        if 'WhatsappOutbound' in row:
-            score += row['WhatsappOutbound'] * 2
+    # --------------------------------------------------
 
+    # Step 7: Dynamic Scoring Based on Importance Scores
+
+    st.subheader("🔎 Step 7: Dynamic Lead Scoring Formula")
+
+    st.markdown("**Scoring Logic:**")
+    st.markdown("- Positive behaviors (like engagement, downloads) **increase score** proportional to importance.")
+    st.markdown("- Higher 'days since last action' **decreases score** (recency penalty).")
+
+    def dynamic_lead_score(row, importance_scores):
+        score = 0
+        for feature, weight in importance_scores.items():
+            if feature in row:
+                if 'dayssince' in feature:
+                    score -= row[feature] * weight
+                else:
+                    score += row[feature] * weight
         return score
 
-    df['lead_score'] = df.apply(calculate_score, axis=1)
+    df['lead_score'] = df.apply(lambda x: dynamic_lead_score(x, importance_scores), axis=1)
 
-    # Step 10: Dynamic Bucketing
-    df['lead_percentile'] = df['lead_score'].rank(pct=True) * 100
+    st.success("✅ Dynamic lead scores calculated!")
 
-    def categorize_lead(p):
-        if p >= 90:
+    # --------------------------------------------------
+
+    # Step 8: Bucketing Leads Based on Score Percentiles
+
+    st.subheader("🔎 Step 8: Dynamic Bucketing Logic")
+
+    st.markdown("**Bucketing Rules (based on score percentile):**")
+    st.markdown("- Top 10% → **Hot 🔥**")
+    st.markdown("- 70%–90% → **Engaged 🟡**")
+    st.markdown("- 40%–70% → **Warm 🔵**")
+    st.markdown("- 20%–40% → **Curious 🟠**")
+    st.markdown("- Bottom 20% → **Cold ⚪**")
+
+    df['score_percentile'] = df['lead_score'].rank(pct=True) * 100
+
+    def assign_bucket(percentile):
+        if percentile >= 90:
             return 'Hot'
-        elif p >= 70:
+        elif percentile >= 70:
             return 'Engaged'
-        elif p >= 40:
+        elif percentile >= 40:
             return 'Warm'
-        elif p >= 20:
+        elif percentile >= 20:
             return 'Curious'
         else:
             return 'Cold'
 
-    df['lead_bucket'] = df['lead_percentile'].apply(categorize_lead)
+    df['lead_bucket'] = df['score_percentile'].apply(assign_bucket)
 
-    # Step 11: Opportunity Detection
-    df['opportunity_tag'] = np.where(
-        (df['lead_bucket'].isin(['Engaged', 'Warm'])) & (df['WhatsappInbound'] == 0),
-        'High Web Activity, No WhatsApp',
-        np.where(
-            (df['WhatsappInbound'] >= 1) & (df['daysSinceLastWebActivity'] > 30),
-            'Needs Immediate Closure',
-            ''
-        )
-    )
+    st.success("✅ Leads bucketed dynamically!")
 
-    # Step 12: Dashboard Outputs
-    st.subheader("🧠 Scoring Summary")
-    display_columns = ['LeadId', 'lead_score', 'lead_bucket', 'opportunity_tag']
-    if 'CurrentStage' in df.columns:
-        display_columns.append('CurrentStage')
-    st.dataframe(df[display_columns])
+    # --------------------------------------------------
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("### 📌 Bucket Distribution")
-        fig, ax = plt.subplots()
-        sns.countplot(x='lead_bucket', data=df, order=df['lead_bucket'].value_counts().index, palette="viridis", ax=ax)
-        ax.set_title("Lead Buckets")
-        st.pyplot(fig)
+    # Step 9: Opportunity Detection for Special Cases
 
-    with col2:
-        st.markdown("### 📈 Lead Score Distribution")
-        fig, ax = plt.subplots()
-        sns.histplot(df['lead_score'], bins=20, kde=True, color='skyblue', ax=ax)
-        ax.set_title("Lead Score Histogram")
-        st.pyplot(fig)
+    st.subheader("🎯 Step 9: Opportunity Detection Rules")
 
-    st.markdown("### 🎯 Opportunity Summary")
-    st.dataframe(df[['LeadId', 'lead_bucket', 'opportunity_tag']][df['opportunity_tag'] != ''])
+    st.markdown("**Special Opportunity Tags:**")
+    st.markdown("- 'High Web Activity, No WhatsApp' → Active on website but no inbound communication.")
+    st.markdown("- 'Needs Immediate Closure' → WhatsApp inbound happened but no recent website activity.")
+
+    def detect_opportunity(row):
+        if row['lead_bucket'] in ['Engaged', 'Warm'] and row['whatsappinbound'] == 0:
+            return 'High Web Activity, No WhatsApp'
+        elif row['whatsappinbound'] >= 1 and row['dayssincelastwebactivity'] > 30:
+            return 'Needs Immediate Closure'
+        else:
+            return ''
+
+    df['opportunity_tag'] = df.apply(detect_opportunity, axis=1)
+
+    st.success("✅ Opportunities detected!")
+
+    # --------------------------------------------------
+
+    # Step 10: Dashboard Visualization and Outputs
+
+    st.subheader("📊 Step 10: Final Dashboard")
+
+    st.markdown("### 🎯 Leads Scoring Table")
+    st.dataframe(df[['leadid', 'lead_score', 'lead_bucket', 'opportunity_tag']])
+
+    st.markdown("### 📈 Score Distribution")
+    fig, ax = plt.subplots()
+    sns.histplot(df['lead_score'], bins=20, kde=True)
+    st.pyplot(fig)
+
+    st.markdown("### 📌 Bucket Distribution")
+    fig2, ax2 = plt.subplots()
+    sns.countplot(x='lead_bucket', data=df, order=['Hot', 'Engaged', 'Warm', 'Curious', 'Cold'])
+    st.pyplot(fig2)
+
+    st.markdown("### 📋 Opportunity Leads")
+    st.dataframe(df[df['opportunity_tag'] != ''][['leadid', 'lead_bucket', 'opportunity_tag']])
+
+    st.success("✅ Dashboard fully ready with all logics explained!")
 
 else:
-    st.info("Upload an Excel file with columns like: `LeadId`, `CumulativeTime`, `WhatsappInbound`, `WhatsappOutbound`, `Unqiue_Visits`, etc.")
+    st.info("ℹ️ Please upload an Excel (.xlsx) file with leads data to proceed.")
+
+# 🧠 Now users can see every logic, feature grouping, scoring formula, bucketing rule, and opportunity detection inside the dashboard itself!
