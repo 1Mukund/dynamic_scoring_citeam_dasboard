@@ -2,21 +2,11 @@
 
 import streamlit as st
 import pandas as pd
-import joblib
 
 # --- Page Config --- #
 st.set_page_config(page_title="ASBL Dynamic Lead Dashboard", layout="wide")
 
 st.title("\U0001F3E1 ASBL Dynamic Lead Scoring Dashboard")
-
-# --- Load Models --- #
-@st.cache_resource
-def load_models():
-    logistic_model = joblib.load("models/logistic_model.pkl")
-    xgboost_model = joblib.load("models/xgboost_model.pkl")
-    return logistic_model, xgboost_model
-
-logistic_model, xgboost_model = load_models()
 
 # --- Upload Data --- #
 st.sidebar.header("Upload Section")
@@ -83,17 +73,28 @@ def boosted_conversion_logic(row):
         reasons.append("Low engagement (-15%)")
     return "; ".join(reasons)
 
+# --- Simulated Boosted Conversion % --- #
+def simulate_boosted_conversion(row):
+    score = 10
+    if row['Unique Visits'] >= 3:
+        score += 18
+    if row['HighValuePageViews'] >= 2:
+        score += 15
+    if row['DownloadedFilesCount'] >= 1:
+        score += 8
+    if row['WhatsApp Inbound'] >= 1:
+        score += 22
+    if row['CumulativeTime'] >= 5:
+        score += 10
+    return min(score, 100)
+
 # --- Process Leads --- #
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
     st.write("### Sample Leads Data", df.head())
 
-    X = df[features].fillna(0)
-
-    df['Logistic Conversion %'] = logistic_model.predict_proba(X)[:,1] * 100
-    df['Boosted Conversion %'] = xgboost_model.predict_proba(X)[:,1] * 100
-
     df[['Archetype', 'Archetype Logic']] = df.apply(lambda x: pd.Series(map_archetype(x)), axis=1)
+    df['Boosted Conversion %'] = df.apply(simulate_boosted_conversion, axis=1)
     df['Lead Bucket'] = df.apply(assign_bucket, axis=1)
     df['Churn Risk'] = df['Days Since Last Visit'].apply(churn_risk)
     df['Boosted Conversion Logic'] = df.apply(boosted_conversion_logic, axis=1)
