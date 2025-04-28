@@ -19,7 +19,8 @@ def load_models():
 logistic_model, xgboost_model = load_models()
 
 # --- Upload Data --- #
-uploaded_file = st.file_uploader("Upload Leads Data (Excel)", type=["xlsx"])
+st.sidebar.header("Upload Section")
+uploaded_file = st.sidebar.file_uploader("Upload Leads Data (Excel)", type=["xlsx"])
 
 # --- Define Features --- #
 features = [
@@ -119,3 +120,5 @@ if uploaded_file:
 
     # Download Option
     st.download_button("Download Processed Leads", data=filtered_df.to_csv(index=False), file_name="processed_leads.csv", mime="text/csv")
+else:
+    st.warning("Please upload a leads Excel file to proceed.")
