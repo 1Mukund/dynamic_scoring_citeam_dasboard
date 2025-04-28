@@ -22,21 +22,21 @@ features = [
 
 # --- Archetype Mapping Logic --- #
 def map_archetype(row):
-    if row['HighValuePageViews'] >= 3 and row['CumulativeTime'] > 5:
+    if row.get('HighValuePageViews', 0) >= 3 and row.get('CumulativeTime', 0) > 5:
         return 'Ruler', "Visited premium pages + spent >5 minutes (luxury/status-driven)."
-    elif row['DownloadedFilesCount'] >= 1:
+    elif row.get('DownloadedFilesCount', 0) >= 1:
         return 'Creator', "Downloaded layouts/floor plans (creative customization interest)."
-    elif row['Unique Visits'] >= 3 and row['Number of Pages Visited'] >= 5:
+    elif row.get('Unique Visits', 0) >= 3 and row.get('Number of Pages Visited', 0) >= 5:
         return 'Explorer', "Visited 5+ pages across 3+ sessions (discovery behavior)."
-    elif row['WhatsApp Inbound'] >= 1 and row['Number of Pages Visited'] < 3:
+    elif row.get('WhatsApp Inbound', 0) >= 1 and row.get('Number of Pages Visited', 0) < 3:
         return 'Caregiver', "WhatsApp replies but low browsing (emotional/family-driven)."
     else:
         return 'Everyman', "Focused on pricing/offers, practical buying behavior."
 
 # --- Bucket Assignment Logic --- #
 def assign_bucket(row):
-    prob = row['Boosted Conversion %']
-    inbound = row['WhatsApp Inbound']
+    prob = row.get('Boosted Conversion %', 0)
+    inbound = row.get('WhatsApp Inbound', 0)
     if prob >= 80:
         return "Hot"
     elif 50 <= prob < 80:
@@ -49,6 +49,8 @@ def assign_bucket(row):
 
 # --- Simulated Churn Risk Logic --- #
 def churn_risk(days):
+    if pd.isna(days):
+        return "Unknown"
     if days <= 30:
         return "Low"
     elif 30 < days <= 60:
@@ -59,15 +61,15 @@ def churn_risk(days):
 # --- Boosted Conversion Logic Simulation --- #
 def boosted_conversion_logic(row):
     reasons = []
-    if row['Unique Visits'] >= 3:
+    if row.get('Unique Visits', 0) >= 3:
         reasons.append("Multiple visits (+18%)")
-    if row['HighValuePageViews'] >= 2:
+    if row.get('HighValuePageViews', 0) >= 2:
         reasons.append("Viewed key pages (+15%)")
-    if row['DownloadedFilesCount'] >= 1:
+    if row.get('DownloadedFilesCount', 0) >= 1:
         reasons.append("Downloaded brochure (+8%)")
-    if row['WhatsApp Inbound'] >= 1:
+    if row.get('WhatsApp Inbound', 0) >= 1:
         reasons.append("WhatsApp reply (+22%)")
-    if row['CumulativeTime'] >= 5:
+    if row.get('CumulativeTime', 0) >= 5:
         reasons.append("Spent >5 mins (+10%)")
     if not reasons:
         reasons.append("Low engagement (-15%)")
@@ -76,21 +78,25 @@ def boosted_conversion_logic(row):
 # --- Simulated Boosted Conversion % --- #
 def simulate_boosted_conversion(row):
     score = 10
-    if row['Unique Visits'] >= 3:
+    if row.get('Unique Visits', 0) >= 3:
         score += 18
-    if row['HighValuePageViews'] >= 2:
+    if row.get('HighValuePageViews', 0) >= 2:
         score += 15
-    if row['DownloadedFilesCount'] >= 1:
+    if row.get('DownloadedFilesCount', 0) >= 1:
         score += 8
-    if row['WhatsApp Inbound'] >= 1:
+    if row.get('WhatsApp Inbound', 0) >= 1:
         score += 22
-    if row['CumulativeTime'] >= 5:
+    if row.get('CumulativeTime', 0) >= 5:
         score += 10
     return min(score, 100)
 
 # --- Process Leads --- #
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
+    for feature in features:
+        if feature not in df.columns:
+            df[feature] = 0
+
     st.write("### Sample Leads Data", df.head())
 
     df[['Archetype', 'Archetype Logic']] = df.apply(lambda x: pd.Series(map_archetype(x)), axis=1)
