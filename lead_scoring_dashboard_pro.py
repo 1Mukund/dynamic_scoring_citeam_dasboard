@@ -43,7 +43,9 @@ def map_archetype(row):
         return 'Everyman', "Focused on pricing/offers, practical buying behavior."
 
 # --- Bucket Assignment Logic --- #
-def assign_bucket(prob, inbound, days_since_last_visit):
+def assign_bucket(row):
+    prob = row['Boosted Conversion %']
+    inbound = row['WhatsApp Inbound']
     if prob >= 80:
         return "Hot"
     elif 50 <= prob < 80:
@@ -52,8 +54,6 @@ def assign_bucket(prob, inbound, days_since_last_visit):
         return "Curious"
     elif prob < 20:
         return "Cold"
-    if days_since_last_visit > 30:
-        return "Dormant"
     return "Unknown"
 
 # --- Simulated Churn Risk Logic --- #
@@ -93,7 +93,7 @@ if uploaded_file:
     df['Boosted Conversion %'] = xgboost_model.predict_proba(X)[:,1] * 100
 
     df[['Archetype', 'Archetype Logic']] = df.apply(lambda x: pd.Series(map_archetype(x)), axis=1)
-    df['Lead Bucket'] = df.apply(lambda x: assign_bucket(x['Boosted Conversion %'], x['WhatsApp Inbound'], x['Days Since Last Visit']), axis=1)
+    df['Lead Bucket'] = df.apply(assign_bucket, axis=1)
     df['Churn Risk'] = df['Days Since Last Visit'].apply(churn_risk)
     df['Boosted Conversion Logic'] = df.apply(boosted_conversion_logic, axis=1)
 
